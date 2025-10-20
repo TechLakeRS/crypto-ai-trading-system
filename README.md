@@ -84,18 +84,66 @@ Trading System
 
 ## 📦 Installation
 
+### Quick Start (Recommended)
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd Trading
+cd crypto-ai-trading-system
 
+# Run the quick start script
+python quick_start.py
+```
+
+### Manual Installation
+```bash
 # Install dependencies
 pip install -r requirements.txt
 
-# Set up environment variables
+# Set up environment variables (optional for testing)
 cp .env.example .env
 # Edit .env with your API keys
 ```
+
+## 🚀 How to Run
+
+### Option 1: Quick Start Script
+```bash
+python quick_start.py
+```
+This will guide you through installation and running your first analysis.
+
+### Option 2: Simple Example
+```bash
+python example.py
+```
+Runs a basic BTC analysis with technical indicators and AI sentiment.
+
+### Option 3: Main System
+```bash
+# Single analysis
+python main.py --single --symbol BTC/USDT
+
+# Multiple symbols
+python main.py --single --symbols BTC/USDT ETH/USDT SOL/USDT
+
+# Continuous monitoring
+python main.py --monitor --symbols BTC/USDT ETH/USDT --interval 300
+
+# Help
+python main.py --help
+```
+
+### Command Line Options
+- `--single`: Run single analysis (default)
+- `--monitor`: Run continuous monitoring mode
+- `--symbol SYMBOL`: Analyze single symbol (e.g., BTC/USDT)
+- `--symbols SYMBOL1 SYMBOL2`: Analyze multiple symbols
+- `--timeframe 5m`: Set timeframe (1m, 5m, 15m, 1h, 4h, 1d)
+- `--interval 300`: Analysis interval in seconds for monitoring
+- `--exchange binance`: Choose exchange (binance, coinbase, kraken)
+- `--mainnet`: Use mainnet instead of testnet
+- `--verbose`: Enable detailed logging
+- `--quiet`: Suppress output except errors
 
 ## 🔧 Configuration
 
