@@ -82,7 +82,32 @@ function createCryptoCard(symbol, info) {
     metrics.className = 'metrics';
 
     metrics.appendChild(createMetric('24h Volume', '$' + (info.volume / 1000000).toFixed(2) + 'M'));
-    metrics.appendChild(createMetric('Confluences', '-'));
+
+    // Display sentiment (info only - not used in signals)
+    const sentimentText = info.sentiment_text || 'Neutral';
+    const sentimentMetric = createMetric('Sentiment', sentimentText);
+    const sentimentValue = sentimentMetric.querySelector('.metric-value');
+    if (sentimentText === 'Bullish') {
+        sentimentValue.style.color = '#10b981';
+        sentimentValue.style.fontWeight = '600';
+    } else if (sentimentText === 'Bearish') {
+        sentimentValue.style.color = '#ef4444';
+        sentimentValue.style.fontWeight = '600';
+    }
+    metrics.appendChild(sentimentMetric);
+
+    // Display technical confluences (used for signals)
+    const confluences = info.confluences || 0;
+    const confluenceMetric = createMetric('Confluences', confluences + '/5');
+    const confluenceValue = confluenceMetric.querySelector('.metric-value');
+    if (confluences >= 3) {
+        confluenceValue.style.color = '#10b981';
+        confluenceValue.style.fontWeight = '600';
+    } else if (confluences >= 2) {
+        confluenceValue.style.color = '#f59e0b';
+        confluenceValue.style.fontWeight = '600';
+    }
+    metrics.appendChild(confluenceMetric);
 
     card.appendChild(header);
     card.appendChild(price);
@@ -128,12 +153,16 @@ async function loadMarketData() {
 
     for (const pair of pairs) {
         try {
-            const response = await fetch('/api/market/' + pair);
+            const encodedPair = encodeURIComponent(pair);
+            const response = await fetch('/api/market/' + encodedPair);
             const data = await response.json();
             const card = createCryptoCard(pair, {
                 price: data.current_price,
                 change_24h: data.change_24h_pct,
-                volume: data.volume_24h
+                volume: data.volume_24h,
+                sentiment_text: data.sentiment_text,
+                sentiment_score: data.sentiment_score,
+                confluences: data.confluences || 0
             });
             grid.appendChild(card);
         } catch (error) {
@@ -306,10 +335,235 @@ function updateLastUpdateTime() {
     document.getElementById('last-update').textContent = now.toLocaleTimeString();
 }
 
+// ===== TRIPLE MODEL FUNCTIONS =====
+
+async function loadAllModels() {
+    console.log('Loading signals from all 3 models...');
+    const model1Container = document.getElementById('model1-signals');
+    const model2Container = document.getElementById('model2-signals');
+    const model3Container = document.getElementById('model3-signals');
+
+    model1Container.textContent = '';
+    model2Container.textContent = '';
+    model3Container.textContent = '';
+
+    const loading1 = document.createElement('div');
+    loading1.className = 'loading';
+    loading1.textContent = 'Loading Model 1 signals...';
+    model1Container.appendChild(loading1);
+
+    const loading2 = document.createElement('div');
+    loading2.className = 'loading';
+    loading2.textContent = 'Loading Model 2 signals...';
+    model2Container.appendChild(loading2);
+
+    const loading3 = document.createElement('div');
+    loading3.className = 'loading';
+    loading3.textContent = 'Loading Model 3 signals...';
+    model3Container.appendChild(loading3);
+
+    try {
+        const response = await fetch('/api/signals/all');
+        const data = await response.json();
+
+        // Model 1 signals
+        renderModelSignals(data.model1, model1Container, 1);
+
+        // Model 2 signals
+        renderModelSignals(data.model2, model2Container, 2);
+
+        // Model 3 signals
+        renderModelSignals(data.model3, model3Container, 3);
+
+        updateLastUpdateTime();
+    } catch (error) {
+        console.error('Error loading all models:', error);
+
+        model1Container.textContent = '';
+        const error1 = document.createElement('div');
+        error1.className = 'no-signals';
+        error1.textContent = 'Failed to load Model 1 signals';
+        model1Container.appendChild(error1);
+
+        model2Container.textContent = '';
+        const error2 = document.createElement('div');
+        error2.className = 'no-signals';
+        error2.textContent = 'Failed to load Model 2 signals';
+        model2Container.appendChild(error2);
+
+        model3Container.textContent = '';
+        const error3 = document.createElement('div');
+        error3.className = 'no-signals';
+        error3.textContent = 'Failed to load Model 3 signals';
+        model3Container.appendChild(error3);
+    }
+}
+
+function renderModelSignals(modelData, container, modelNumber) {
+    container.textContent = '';
+
+    if (!modelData || !modelData.signals || modelData.signals.length === 0) {
+        const noSignals = document.createElement('div');
+        noSignals.className = 'no-signals';
+        noSignals.textContent = 'No signals from ' + (modelData ? modelData.name : 'model');
+        container.appendChild(noSignals);
+        return;
+    }
+
+    modelData.signals.forEach(function(signal) {
+        const signalCard = createModelSignalCard(signal, modelNumber);
+        container.appendChild(signalCard);
+    });
+}
+
+function createModelSignalCard(signal, modelNumber) {
+    const card = document.createElement('div');
+    const signalClass = signal.signal_type === 'long' ? 'model-signal-buy' : 'model-signal-sell';
+    card.className = 'model-signal-card ' + signalClass;
+
+    // Header
+    const header = document.createElement('div');
+    header.style.display = 'flex';
+    header.style.justifyContent = 'space-between';
+    header.style.alignItems = 'center';
+    header.style.marginBottom = '12px';
+
+    const signalInfo = document.createElement('div');
+    const signalType = document.createElement('div');
+    signalType.style.fontSize = '1.3em';
+    signalType.style.fontWeight = 'bold';
+    signalType.style.textTransform = 'uppercase';
+    signalType.style.color = signal.signal_type === 'long' ? '#4ade80' : '#ef4444';
+    signalType.textContent = signal.signal_type;
+
+    const symbol = document.createElement('div');
+    symbol.style.fontSize = '0.95em';
+    symbol.style.color = '#9ca3af';
+    symbol.style.marginTop = '3px';
+    symbol.textContent = signal.symbol;
+
+    signalInfo.appendChild(signalType);
+    signalInfo.appendChild(symbol);
+
+    const confidence = document.createElement('div');
+    confidence.style.fontSize = '1.2em';
+    confidence.style.fontWeight = '600';
+    confidence.style.color = '#4facfe';
+    confidence.textContent = (signal.confidence * 100).toFixed(0) + '%';
+
+    header.appendChild(signalInfo);
+    header.appendChild(confidence);
+    card.appendChild(header);
+
+    // Prices
+    const prices = document.createElement('div');
+    prices.style.display = 'grid';
+    prices.style.gridTemplateColumns = 'repeat(3, 1fr)';
+    prices.style.gap = '8px';
+    prices.style.marginBottom = '12px';
+
+    prices.appendChild(createSmallMetric('Entry', '$' + signal.entry_price.toFixed(2)));
+    prices.appendChild(createSmallMetric('Stop', '$' + signal.stop_loss.toFixed(2)));
+
+    const tpLabel = signal.take_profit && signal.take_profit.length > 0
+        ? (Array.isArray(signal.take_profit[0])
+            ? '$' + signal.take_profit[0][1].toFixed(2)  // For model format [["TP1", value]]
+            : '$' + signal.take_profit[0].toFixed(2))     // For simple array format [value]
+        : 'N/A';
+    prices.appendChild(createSmallMetric('Target', tpLabel));
+
+    card.appendChild(prices);
+
+    // Model-specific metadata
+    if ((modelNumber === 2 || modelNumber === 3) && signal.leverage) {
+        const leverageDiv = document.createElement('div');
+        leverageDiv.style.marginBottom = '10px';
+
+        const leverageBadge = document.createElement('span');
+        leverageBadge.className = 'leverage-badge';
+        leverageBadge.textContent = signal.leverage + '× Leverage';
+
+        leverageDiv.appendChild(leverageBadge);
+
+        if (signal.risk_usd) {
+            const riskText = document.createElement('span');
+            riskText.style.marginLeft = '10px';
+            riskText.style.fontSize = '0.9em';
+            riskText.style.color = '#9ca3af';
+            riskText.textContent = ' Risk: $' + signal.risk_usd.toFixed(2);
+            leverageDiv.appendChild(riskText);
+        }
+
+        card.appendChild(leverageDiv);
+
+        // Invalidation condition
+        if (signal.invalidation_condition) {
+            const invalidation = document.createElement('div');
+            invalidation.className = 'invalidation-warning';
+            invalidation.textContent = '⚠ ' + signal.invalidation_condition;
+            card.appendChild(invalidation);
+        }
+    }
+
+    // Primary reason
+    const reason = document.createElement('div');
+    reason.style.marginTop = '10px';
+    reason.style.fontSize = '0.9em';
+    reason.style.color = '#d1d5db';
+    reason.textContent = signal.primary_reason;
+    card.appendChild(reason);
+
+    // Confluences indicator
+    const confluencesDiv = document.createElement('div');
+    confluencesDiv.style.marginTop = '10px';
+    confluencesDiv.style.paddingTop = '10px';
+    confluencesDiv.style.borderTop = '1px solid rgba(255,255,255,0.1)';
+    confluencesDiv.style.fontSize = '0.85em';
+    confluencesDiv.style.color = '#9ca3af';
+
+    let confText;
+    if (modelNumber === 1) {
+        confText = signal.confluences + '/5 technical sources';
+    } else if (modelNumber === 3) {
+        confText = signal.confluences + '/9 confluences';
+    } else {
+        confText = 'Confidence: ' + (signal.confidence * 100).toFixed(0) + '%';
+    }
+
+    confluencesDiv.textContent = confText + ' | R:R ' + signal.risk_reward.toFixed(2);
+    card.appendChild(confluencesDiv);
+
+    return card;
+}
+
+function createSmallMetric(label, value) {
+    const metric = document.createElement('div');
+    metric.style.padding = '8px';
+    metric.style.background = 'rgba(0,0,0,0.2)';
+    metric.style.borderRadius = '6px';
+    metric.style.textAlign = 'center';
+
+    const labelEl = document.createElement('div');
+    labelEl.style.fontSize = '0.75em';
+    labelEl.style.color = '#9ca3af';
+    labelEl.style.marginBottom = '4px';
+    labelEl.textContent = label;
+
+    const valueEl = document.createElement('div');
+    valueEl.style.fontSize = '0.95em';
+    valueEl.style.fontWeight = '600';
+    valueEl.textContent = value;
+
+    metric.appendChild(labelEl);
+    metric.appendChild(valueEl);
+
+    return metric;
+}
+
 window.onload = function() {
     console.log('Initializing dashboard...');
     connectWebSocket();
     loadMarketData();
-    loadSignals();
-    setInterval(loadSignals, 5 * 60 * 1000);
+    loadAllModels(); // Load all 3 models
+    setInterval(loadAllModels, 3 * 60 * 1000); // Refresh every 3 minutes
 };

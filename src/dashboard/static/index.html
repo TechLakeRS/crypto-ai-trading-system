@@ -29,11 +29,59 @@
 
         <section class="signals-section">
             <div class="section-header">
-                <h2>Trading Signals</h2>
-                <button class="refresh-btn" onclick="loadSignals()">Refresh Signals</button>
+                <h2>Trading Signals - Triple Model Comparison</h2>
+                <button class="refresh-btn" onclick="loadAllModels()">Refresh All Signals</button>
             </div>
-            <div id="signals-container">
-                <div class="loading">Loading signals...</div>
+            <div class="triple-model-container">
+                <!-- Model 1: Manual.md Day Trading -->
+                <div class="model-panel model-1">
+                    <div class="model-header">
+                        <h3>Model 1</h3>
+                        <div class="model-info">
+                            <span class="info-badge">RSI 75/25</span>
+                            <span class="info-badge">MACD 5-13-8</span>
+                            <span class="info-badge">No Leverage</span>
+                            <span class="info-badge">0.75% Risk</span>
+                        </div>
+                    </div>
+                    <div id="model1-signals">
+                        <div class="loading">Loading Model 1 signals...</div>
+                    </div>
+                </div>
+
+                <!-- Model 2 -->
+                <div class="model-panel model-2">
+                    <div class="model-header">
+                        <h3>Model 2</h3>
+                        <div class="model-info">
+                            <span class="info-badge">RSI 7-period</span>
+                            <span class="info-badge">Multi-timeframe</span>
+                            <span class="info-badge">10-15× Leverage</span>
+                            <span class="info-badge">1.0% Risk</span>
+                        </div>
+                    </div>
+                    <div id="model2-signals">
+                        <div class="loading">Loading Model 2 signals...</div>
+                    </div>
+                </div>
+
+                <!-- Model 3 -->
+                <div class="model-panel model-3">
+                    <div class="model-header">
+                        <h3>Model 3</h3>
+                        <div class="model-info">
+                            <span class="info-badge">Dual RSI 7/14</span>
+                            <span class="info-badge">3m+5m+4H</span>
+                            <span class="info-badge">3-8× Leverage</span>
+                            <span class="info-badge">0.85% Risk</span>
+                            <span class="info-badge">4/9 Confluences</span>
+                            <span class="info-badge">OI Tracking</span>
+                        </div>
+                    </div>
+                    <div id="model3-signals">
+                        <div class="loading">Loading Model 3 signals...</div>
+                    </div>
+                </div>
             </div>
         </section>
     </div>

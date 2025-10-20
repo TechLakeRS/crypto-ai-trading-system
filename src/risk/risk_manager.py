@@ -56,22 +56,25 @@ class RiskMetrics:
 class RiskManager:
     """Comprehensive risk management system for crypto trading"""
 
-    def __init__(self, initial_capital: float = 10000, config: Dict = None):
+    def __init__(self, initial_capital: float = 10000, config: Dict = None, mode: str = 'standard'):
         self.initial_capital = initial_capital
         self.current_capital = initial_capital
+        self.mode = mode  # 'conservative', 'standard', 'aggressive'
 
-        # Risk parameters from markdown strategies
+        # Risk parameters from Manual.md - Crypto-specific
+        # Note: stop_loss_pct and take_profit_ratio are now dynamic based on mode
         self.config = config or {
+            'mode': mode,  # Trading mode
             'max_position_size_pct': 10.0,  # Max 10% per position
             'max_total_exposure_pct': 60.0,  # Max 60% total exposure
             'max_correlation_exposure': 0.7,  # Max correlation between positions
-            'stop_loss_pct': 2.0,  # Default 2% stop loss (crypto adjusted)
-            'take_profit_ratio': 2.0,  # 1:2 risk/reward ratio
+            'risk_per_trade_pct': 0.75,  # Manual.md: 0.5-1% risk per trade (using 0.75%)
             'max_daily_loss_pct': 5.0,  # Circuit breaker at 5% daily loss
-            'max_drawdown_pct': 20.0,  # Maximum acceptable drawdown
-            'min_liquidity_ratio': 0.3,  # Keep 30% in cash/stables
+            'max_drawdown_pct': 30.0,  # Manual.md: 30-40% max drawdown for crypto
+            'min_liquidity_ratio': 0.2,  # Manual.md: 20% in stablecoins
             'volatility_scalar': 1.5,  # Volatility adjustment for crypto
             'confidence_threshold': 0.7,  # Minimum confidence for full position
+            'atr_stop_multiplier': 1.5,  # Manual.md: minimum 1.5× ATR for stops
         }
 
         # Portfolio tracking
@@ -90,6 +93,26 @@ class RiskManager:
         # Correlation matrix for portfolio
         self.correlation_matrix = pd.DataFrame()
 
+    @property
+    def stop_loss_pct(self) -> float:
+        """Dynamic stop loss % based on trading mode (Model 1)"""
+        modes = {
+            'conservative': 2.0,  # Tighter stop, more cautious
+            'standard': 2.5,      # Default day trading stop
+            'aggressive': 3.0     # Wider stop for volatility
+        }
+        return modes.get(self.mode, 2.5)
+
+    @property
+    def take_profit_ratio(self) -> float:
+        """Dynamic base R:R ratio based on mode (Model 1)"""
+        modes = {
+            'conservative': 1.5,  # Smaller targets, quicker exits
+            'standard': 2.0,      # Default 1:2 risk/reward
+            'aggressive': 2.5     # Larger targets for bigger wins
+        }
+        return modes.get(self.mode, 2.0)
+
     def calculate_position_size(self, symbol: str, confidence: float,
                               volatility: float, signal_strength: float,
                               account_balance: Optional[float] = None) -> Dict:
@@ -102,7 +125,7 @@ class RiskManager:
 
         # Base position size using Kelly Criterion
         win_probability = 0.5 + (confidence * 0.3)  # Convert confidence to win probability
-        avg_win = self.config['take_profit_ratio']
+        avg_win = self.take_profit_ratio  # Use dynamic property
         avg_loss = 1.0
 
         # Kelly formula: f = (p * b - q) / b
@@ -134,9 +157,9 @@ class RiskManager:
         position_value = account_balance * position_size_pct
 
         # Risk-based position sizing (ensure we don't risk more than stop loss allows)
-        max_risk_amount = account_balance * (self.config['stop_loss_pct'] / 100)
-        if position_value * (self.config['stop_loss_pct'] / 100) > max_risk_amount:
-            position_value = max_risk_amount / (self.config['stop_loss_pct'] / 100)
+        max_risk_amount = account_balance * (self.stop_loss_pct / 100)  # Use dynamic property
+        if position_value * (self.stop_loss_pct / 100) > max_risk_amount:
+            position_value = max_risk_amount / (self.stop_loss_pct / 100)
 
         return {
             'position_size_pct': position_size_pct * 100,
@@ -155,57 +178,123 @@ class RiskManager:
                            volatility_pct: Optional[float] = None) -> float:
         """
         Calculate dynamic stop loss based on market conditions
-        Crypto-adjusted from forex strategies
+        Manual.md: Day trading needs tight stops (2-3%), not wide ATR-based stops
         """
-        # Base stop loss using ATR (crypto needs wider stops)
-        atr_multiplier = 1.5 if volatility_pct and volatility_pct > 5 else 1.2
+        # Percentage-based stop for day trading (PRIMARY METHOD - use this)
+        pct_stop = entry_price * (self.stop_loss_pct / 100)  # Use dynamic property
+
+        # ATR-based validation (only use if percentage stop is unreasonable)
+        atr_multiplier = 1.2  # Reasonable multiplier for day trading
+        if volatility_pct and volatility_pct > 5:
+            atr_multiplier = 1.5  # Wider in high volatility
         atr_stop = atr * atr_multiplier
 
-        # Percentage-based stop
-        pct_stop = entry_price * (self.config['stop_loss_pct'] / 100)
+        # Cap ATR stop between 1% (minimum for day trading) and 4% (maximum)
+        min_stop_distance = entry_price * 0.01  # Don't go below 1%
+        max_stop_distance = entry_price * 0.04  # Don't go above 4%
+        atr_stop = min(max(atr_stop, min_stop_distance), max_stop_distance)
 
-        # Support/resistance based stop
+        # Use percentage stop as base, only adjust if ATR suggests it's unreasonable
+        # If ATR stop is much wider than percentage (e.g., high volatility), use percentage
+        # If ATR stop is slightly wider, use ATR (gives breathing room)
+        if atr_stop > pct_stop * 1.5:
+            # ATR suggests much wider stop, stick with percentage (more conservative)
+            base_stop_distance = pct_stop
+        else:
+            # ATR is reasonable, use it for slight breathing room
+            base_stop_distance = max(pct_stop, atr_stop * 0.9)
+
+        # Consider support/resistance if available
         if support_level:
             if position_type == 'long':
-                support_stop = entry_price - abs(entry_price - support_level) * 1.1
+                support_distance = abs(entry_price - support_level)
             else:
-                support_stop = entry_price + abs(support_level - entry_price) * 1.1
-        else:
-            support_stop = pct_stop
+                support_distance = abs(support_level - entry_price)
 
-        # Use the most conservative stop
+            # Use support if it provides reasonable stop (not too wide)
+            if support_distance <= max_stop_distance:
+                # Support gives breathing room, use it if it's slightly wider but still reasonable
+                base_stop_distance = max(base_stop_distance, support_distance * 0.9)
+
+        # Calculate final stop loss
         if position_type == 'long':
-            stop_loss = entry_price - max(atr_stop, pct_stop, abs(entry_price - support_stop))
+            stop_loss = entry_price - base_stop_distance
         else:
-            stop_loss = entry_price + max(atr_stop, pct_stop, abs(support_stop - entry_price))
+            stop_loss = entry_price + base_stop_distance
 
         return round(stop_loss, 2)
 
     def calculate_take_profit(self, entry_price: float, stop_loss: float,
                             position_type: str, resistance_level: Optional[float] = None,
-                            risk_reward_ratio: Optional[float] = None) -> List[float]:
+                            risk_reward_ratio: Optional[float] = None,
+                            market_data: Optional[pd.Series] = None,
+                            htf_data: Optional[pd.Series] = None) -> List[float]:
         """
-        Calculate take profit levels with partial exit strategy
+        Calculate dynamic take profit levels with partial exit strategy
+
+        Auto-adjusts based on market conditions:
+        - Volatility (ATR): High vol = tighter targets, Low vol = wider targets
+        - Trend strength: Strong trend = extend targets
+        - Volume: High volume = more confident, wider targets
         """
         if risk_reward_ratio is None:
-            risk_reward_ratio = self.config['take_profit_ratio']
+            risk_reward_ratio = self.take_profit_ratio  # Use dynamic property
 
         risk_amount = abs(entry_price - stop_loss)
+
+        # Dynamic adjustments based on market conditions
+        volatility_multiplier = 1.0
+        trend_multiplier = 1.0
+        volume_multiplier = 1.0
+
+        # Volatility adjustment (ATR-based)
+        if htf_data is not None:
+            atr_htf = htf_data.get('atr', 0)
+            if atr_htf > 0:
+                atr_pct = (atr_htf / entry_price) * 100
+                if atr_pct > 4:  # High volatility
+                    volatility_multiplier = 0.85  # Tighter targets in choppy markets
+                elif atr_pct < 2:  # Low volatility
+                    volatility_multiplier = 1.15  # Wider targets in calm markets
+
+        # Trend strength and volume adjustments
+        if market_data is not None:
+            # Trend strength adjustment
+            ema_20 = market_data.get('ema_20', entry_price)
+            ema_50 = market_data.get('ema_50', entry_price)
+
+            if position_type == 'long' and entry_price > ema_20 > ema_50:
+                trend_multiplier = 1.1  # Strong uptrend, extend target
+            elif position_type == 'short' and entry_price < ema_20 < ema_50:
+                trend_multiplier = 1.1  # Strong downtrend, extend target
+
+            # Volume adjustment
+            volume_ratio = market_data.get('volume_ratio', 1.0)
+            if volume_ratio > 1.5:  # High volume confirmation
+                volume_multiplier = 1.1
+            elif volume_ratio < 0.8:  # Weak volume
+                volume_multiplier = 0.9
+
+        # Apply all adjustments to base R:R ratio
+        adjusted_rr = risk_reward_ratio * volatility_multiplier * trend_multiplier * volume_multiplier
+
+        # Clamp to reasonable range for day trading (1.5x to 3x)
+        adjusted_rr = max(1.5, min(adjusted_rr, 3.0))
 
         # Multiple take profit levels for scaling out
         tp_levels = []
 
         if position_type == 'long':
-            # TP1: 1:1 risk/reward (secure breakeven)
+            # TP1: 1:1 risk/reward (secure breakeven) - 40% position
             tp1 = entry_price + risk_amount
             tp_levels.append(('TP1_40%', round(tp1, 2)))
 
-            # TP2: Configured risk/reward ratio
-            tp2 = entry_price + (risk_amount * risk_reward_ratio)
+            # TP2: Adjusted risk/reward ratio - 40% position
+            tp2 = entry_price + (risk_amount * adjusted_rr)
             tp_levels.append(('TP2_40%', round(tp2, 2)))
 
-            # TP3: Let 20% ride with trailing stop
-            tp3 = entry_price + (risk_amount * risk_reward_ratio * 1.5)
+            # TP3: Extended target - 20% ride with trailing stop
+            tp3 = entry_price + (risk_amount * adjusted_rr * 1.3)
             if resistance_level and resistance_level > entry_price:
                 tp3 = min(tp3, resistance_level * 0.98)  # Just below resistance
             tp_levels.append(('TP3_20%_trail', round(tp3, 2)))
@@ -214,10 +303,10 @@ class RiskManager:
             tp1 = entry_price - risk_amount
             tp_levels.append(('TP1_40%', round(tp1, 2)))
 
-            tp2 = entry_price - (risk_amount * risk_reward_ratio)
+            tp2 = entry_price - (risk_amount * adjusted_rr)
             tp_levels.append(('TP2_40%', round(tp2, 2)))
 
-            tp3 = entry_price - (risk_amount * risk_reward_ratio * 1.5)
+            tp3 = entry_price - (risk_amount * adjusted_rr * 1.3)
             if resistance_level and resistance_level < entry_price:
                 tp3 = max(tp3, resistance_level * 1.02)
             tp_levels.append(('TP3_20%_trail', round(tp3, 2)))

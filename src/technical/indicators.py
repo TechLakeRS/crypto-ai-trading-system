@@ -40,9 +40,9 @@ class CryptoTechnicalAnalyzer:
     def configure_for_mode(self):
         """Configure indicators based on trading mode (from markdown strategies)"""
         if self.mode == "scalping":
-            # 1-5 minute timeframe settings
+            # 3-minute timeframe settings (DP.MD Model 2)
             self.config = {
-                'rsi': {'period': 5, 'overbought': 85, 'oversold': 15},
+                'rsi': {'period': 7, 'overbought': 80, 'oversold': 20},  # dp.md: RSI 7-period for fast scalping
                 'macd': {'fast': 3, 'slow': 10, 'signal': 16},
                 'bb': {'period': 20, 'std': 2.5},
                 'ema': [9, 20],
@@ -51,11 +51,11 @@ class CryptoTechnicalAnalyzer:
                 'stoch': {'period': 5, 'smooth': 3}
             }
         elif self.mode == "day_trading":
-            # 5-15 minute timeframe settings
+            # 5-minute timeframe settings (FROM MANUAL.MD - crypto-specific)
             self.config = {
-                'rsi': {'period': 14, 'overbought': 75, 'oversold': 25},
-                'macd': {'fast': 5, 'slow': 35, 'signal': 5},
-                'bb': {'period': 20, 'std': 2.5},
+                'rsi': {'period': 14, 'overbought': 75, 'oversold': 25},  # Manual.md: 5-min = 75/25 levels
+                'macd': {'fast': 5, 'slow': 13, 'signal': 8},  # Manual.md: 5-min = MACD(5-13-8)
+                'bb': {'period': 20, 'std': 2.5},  # Manual.md: 2.5-3.0σ for crypto
                 'ema': [20, 50],
                 'atr': {'period': 14},
                 'volume_ma': 20,
