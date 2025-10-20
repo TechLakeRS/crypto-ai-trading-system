@@ -1,0 +1,19 @@
+Now we implemented here multiple exchanges. I just want binance to load data. 
+
+API Key
+gfyCln8X9xSqOhCqnVpJl5VzMwFvb4TEpfph6IKpJyrazey1027TNCLxm6iR5hGO
+Secret Key
+TzcRvn1unOaT7ZmKehFBCrteHNnY6Fc3hDvFP2XNHc1WXk36mhW80cJAPfOoz7wm
+
+Then lets build a dashboard first. I want it be on a browser, just a page. doesn't need to be a website
+
+I should see the crypto,
+also it should give information on how many confluences  it has, if there is a signal or close to a signal it should tell me  tp sl etc. 
+Implement also that it searches prepelixty.ai. that it reads tweets using grok, and loads all other data for sentiment or anything that might influence the signal. 
+The model should learn and keep learning. Use Deepseeks model as it is good in financial markets.The models take everything factor in mind.
+
+We need to build something simple but good and nice design of the UI. 
+We should see later other models available so we can see which model says what for trading signal.
+We will use different trading techniques so that should be also visible on the browser page
+
+Lets start with implementation per implementation. We need to be efficient.
